@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 BLE Tracker Scanner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .status-bar {
+            background: #f8f9fa;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-dot.online { background: #28a745; }
+        .status-dot.scanning { background: #ffc107; animation: pulse 1.5s infinite; }
+        .status-dot.offline { background: #dc3545; }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .controls {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        
+        .filter-select {
+            padding: 8px 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 20px;
+            background: white;
+            cursor: pointer;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            max-height: 70vh;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        
+        th {
+            background: #343a40;
+            color: white;
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: middle;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .risk-high {
+            background: #f8d7da !important;
+            border-left: 4px solid #dc3545;
+        }
+        
+        .risk-medium {
+            background: #fff3cd !important;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .risk-low {
+            background: #d1ecf1 !important;
+            border-left: 4px solid #17a2b8;
+        }
+        
+        .tracker-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .tracker-yes {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .tracker-no {
+            background: #28a745;
+            color: white;
+        }
+        
+        .rssi-bar {
+            width: 60px;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .rssi-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        
+        .rssi-strong { background: #28a745; }
+        .rssi-medium { background: #ffc107; }
+        .rssi-weak { background: #dc3545; }
+        
+        .device-name {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .device-address {
+            font-family: 'Courier New', monospace;
+            color: #6c757d;
+            font-size: 12px;
+        }
+        
+        .last-seen {
+            color: #6c757d;
+            font-size: 12px;
+        }
+        
+        .manufacturer-data {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #6c757d;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+        
+        .manufacturer-data:hover {
+            overflow: visible;
+            white-space: normal;
+            word-break: break-all;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .alert {
+            padding: 15px;
+            margin: 20px 30px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+        
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2em; }
+            .controls { flex-direction: column; align-items: stretch; }
+            .status-bar { flex-direction: column; align-items: flex-start; }
+            table { font-size: 12px; }
+            th, td { padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚨 BLE Tracker Scanner</h1>
+            <p>Real-time detection and analysis of Bluetooth Low Energy tracking devices</p>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot" id="wifiStatus"></div>
+                <span id="wifiText">WiFi: Connecting...</span>
+            </div>
+            <div class="status-item">
+                <div class="status-dot" id="scanStatus"></div>
+                <span id="scanText">Scan: Idle</span>
+            </div>
+            <div class="status-item">
+                <strong id="deviceCount">Devices: 0</strong>
+            </div>
+            <div class="status-item">
+                <strong id="trackerCount" style="color: #dc3545;">Trackers: 0</strong>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="refreshData()">🔄 Refresh</button>
+            <button class="btn btn-secondary" onclick="triggerScan()">📡 New Scan</button>
+            <select class="filter-select" id="filterSelect" onchange="filterDevices()">
+                <option value="all">All Devices</option>
+                <option value="trackers">Trackers Only</option>
+                <option value="high-risk">High Risk Only</option>
+                <option value="medium-risk">Medium Risk Only</option>
+            </select>
+            <label>
+                <input type="checkbox" id="autoRefresh" checked onchange="toggleAutoRefresh()">
+                Auto-refresh (10s)
+            </label>
+        </div>
+        
+        <div id="alertContainer"></div>
+        
+        <div class="table-container">
+            <table id="deviceTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortTable(0)">Device Info ↕</th>
+                        <th onclick="sortTable(1)">Signal ↕</th>
+                        <th onclick="sortTable(2)">Tracker ↕</th>
+                        <th onclick="sortTable(3)">Type ↕</th>
+                        <th onclick="sortTable(4)">Risk ↕</th>
+                        <th onclick="sortTable(5)">Last Seen ↕</th>
+                        <th>Manufacturer Data</th>
+                    </tr>
+                </thead>
+                <tbody id="deviceTableBody">
+                    <tr>
+                        <td colspan="7" class="loading">
+                            <div class="spinner"></div>
+                            Loading BLE devices...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let devices = [];
+        let autoRefreshInterval;
+        let sortColumn = -1;
+        let sortDirection = 1;
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshData();
+            toggleAutoRefresh();
+        });
+        
+        // Fetch device data from ESP32
+        async function refreshData() {
+            try {
+                const response = await fetch('/api/devices');
+                const data = await response.json();
+                
+                devices = data.devices || [];
+                updateStatus(data.status || {});
+                updateTable();
+                updateCounts();
+                checkForHighRiskTrackers();
+                
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                showError('Failed to connect to ESP32. Please check the connection.');
+            }
+        }
+        
+        // Update status indicators
+        function updateStatus(status) {
+            const wifiStatus = document.getElementById('wifiStatus');
+            const wifiText = document.getElementById('wifiText');
+            const scanStatus = document.getElementById('scanStatus');
+            const scanText = document.getElementById('scanText');
+            
+            if (status.wifi) {
+                wifiStatus.className = 'status-dot online';
+                wifiText.textContent = `WiFi: Connected (${status.ip || 'Unknown IP'})`;
+            } else {
+                wifiStatus.className = 'status-dot offline';
+                wifiText.textContent = 'WiFi: Disconnected';
+            }
+            
+            if (status.scanning) {
+                scanStatus.className = 'status-dot scanning';
+                scanText.textContent = 'Scan: Active';
+            } else {
+                scanStatus.className = 'status-dot online';
+                scanText.textContent = 'Scan: Idle';
+            }
+        }
+        
+        // Update device counts
+        function updateCounts() {
+            const totalDevices = devices.length;
+            const trackerCount = devices.filter(d => d.isTracker).length;
+            
+            document.getElementById('deviceCount').textContent = `Devices: ${totalDevices}`;
+            document.getElementById('trackerCount').textContent = `Trackers: ${trackerCount}`;
+        }
+        
+        // Check for high-risk trackers and show alerts
+        function checkForHighRiskTrackers() {
+            const highRiskTrackers = devices.filter(d => d.riskLevel === 'High');
+            const alertContainer = document.getElementById('alertContainer');
+            
+            if (highRiskTrackers.length > 0) {
+                alertContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        ⚠️ <strong>WARNING:</strong> ${highRiskTrackers.length} high-risk tracking device(s) detected! 
+                        These devices may be tracking your location.
+                    </div>
+                `;
+            } else {
+                alertContainer.innerHTML = '';
+            }
+        }
+        
+        // Update the device table
+        function updateTable() {
+            const tbody = document.getElementById('deviceTableBody');
+            const filter = document.getElementById('filterSelect').value;
+            
+            let filteredDevices = devices.filter(device => {
+                switch (filter) {
+                    case 'trackers': return device.isTracker;
+                    case 'high-risk': return device.riskLevel === 'High';
+                    case 'medium-risk': return device.riskLevel === 'Medium';
+                    default: return true;
+                }
+            });
+            
+            if (filteredDevices.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="loading">No devices found matching the current filter.</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = filteredDevices.map(device => {
+                const rssiPercent = Math.max(0, Math.min(100, (device.rssi + 100) * 2));
+                const rssiClass = rssiPercent > 60 ? 'rssi-strong' : rssiPercent > 30 ? 'rssi-medium' : 'rssi-weak';
+                const riskClass = `risk-${device.riskLevel.toLowerCase()}`;
+                
+                return `
+                    <tr class="${riskClass}">
+                        <td>
+                            <div class="device-name">${device.name || '[Unknown]'}</div>
+                            <div class="device-address">${device.address}</div>
+                        </td>
+                        <td>
+                            <div>${device.rssi} dBm</div>
+                            <div class="rssi-bar">
+                                <div class="rssi-fill ${rssiClass}" style="width: ${rssiPercent}%"></div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="tracker-badge ${device.isTracker ? 'tracker-yes' : 'tracker-no'}">
+                                ${device.isTracker ? 'YES' : 'NO'}
+                            </span>
+                        </td>
+                        <td>${device.trackerType}</td>
+                        <td><strong>${device.riskLevel}</strong></td>
+                        <td class="last-seen">${formatTime(device.lastSeen)}</td>
+                        <td class="manufacturer-data" title="${device.manufacturerData}">
+                            ${device.manufacturerData || 'N/A'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        // Format timestamp
+        function formatTime(timestamp) {
+            if (!timestamp) return 'Unknown';
+            const now = Date.now();
+            const diff = now - timestamp;
+            
+            if (diff < 60000) return 'Just now';
+            if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+            return new Date(timestamp).toLocaleString();
+        }
+        
+        // Filter devices
+        function filterDevices() {
+            updateTable();
+        }
+        
+        // Toggle auto-refresh
+        function toggleAutoRefresh() {
+            const checkbox = document.getElementById('autoRefresh');
+            
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+            
+            if (checkbox.checked) {
+                autoRefreshInterval = setInterval(refreshData, 10000);
+            }
+        }
+        
+        // Trigger new scan
+        async function triggerScan() {
+            try {
+                await fetch('/api/scan', { method: 'POST' });
+                setTimeout(refreshData, 2000); // Refresh after 2 seconds
+            } catch (error) {
+                console.error('Error triggering scan:', error);
+            }
+        }
+        
+        // Sort table
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection *= -1;
+            } else {
+                sortColumn = column;
+                sortDirection = 1;
+            }
+            
+            devices.sort((a, b) => {
+                let aVal, bVal;
+                
+                switch (column) {
+                    case 0: aVal = a.name || a.address; bVal = b.name || b.address; break;
+                    case 1: aVal = a.rssi; bVal = b.rssi; break;
+                    case 2: aVal = a.isTracker; bVal = b.isTracker; break;
+                    case 3: aVal = a.trackerType; bVal = b.trackerType; break;
+                    case 4: aVal = a.riskLevel; bVal = b.riskLevel; break;
+                    case 5: aVal = a.lastSeen; bVal = b.lastSeen; break;
+                    default: return 0;
+                }
+                
+                if (aVal < bVal) return -1 * sortDirection;
+                if (aVal > bVal) return 1 * sortDirection;
+                return 0;
+            });
+            
+            updateTable();
+        }
+        
+        // Show error message
+        function showError(message) {
+            const alertContainer = document.getElementById('alertContainer');
+            alertContainer.innerHTML = `
+                <div class="alert alert-danger">
+                    ❌ <strong>Error:</strong> ${message}
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
